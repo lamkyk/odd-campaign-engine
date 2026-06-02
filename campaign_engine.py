@@ -79,22 +79,22 @@ with tab_logistics:
     c1.metric(
         "Target Operational Design Domain (ODD)", 
         "Heavy Snow / Sub-Zero",
-        help="**ELI5:** The specific weather we need to test the car in to prove it is safe.\n\n**Technical:** The formally defined environmental constraints (Temperature < 0°C, Precipitation > 70%) under which the autonomous system is designed to operate safely."
+        help="The specific environmental constraints (Temperature < 0°C, Precipitation > 70%) required to safely validate the autonomous system."
     )
     c2.metric(
         "Facility Availability", 
         "Confirmed (Nov 15 - Dec 20)",
-        help="**ELI5:** The dates we rented the test track.\n\n**Technical:** Contractual window for exclusive access to the KRC winter proving grounds. Cost-burn rate mandates high-efficiency testing during this period."
+        help="The contracted window for exclusive access to the proving grounds. High-efficiency testing is required during these dates to manage cost burn rates."
     )
     c3.metric(
         "Hardware Platform Readiness", 
         "In Transit", 
         delta="-2 Days (Delayed)", 
         delta_color="inverse",
-        help="**ELI5:** The new sensors are on a truck, but they are late.\n\n**Technical:** Logistics tracker for Prototype v2.4 LiDAR/Radar suites. Supply chain friction requires proactive schedule compression to hit milestones."
+        help="Logistics tracker for the physical sensor hardware. Current delays require proactive schedule compression to maintain project milestones."
     )
     
-    st.subheader("14-Day Tactical Weather Window", help="Forecast model to align engineering team deployment with optimal ODD conditions.")
+    st.subheader("14-Day Tactical Weather Window", help="Forecast model used to align engineering team deployment with optimal target ODD conditions.")
     weather_df = fetch_weather_window()
     
     # Highlight days that meet the heavy snow requirement
@@ -123,12 +123,12 @@ with tab_validation:
         platform = st.selectbox(
             "Select Target Hardware/Software Platform:", 
             ["Production Release", "Hardware Prototype (v2.4)"],
-            help="**ELI5:** Are we testing the software currently in customer cars, or the secret new hardware we just built?\n\n**Technical:** Selects the data generation seed and expected noise floor. 'Production' represents nominal baselines. 'Prototype' injects unverified hardware instability."
+            help="Selects the system baseline. 'Production' uses stable nominal data, while 'Prototype' injects the expected instability of unverified hardware."
         )
         test_frames = st.slider(
             "Evaluation Window (Total Frames)", 
             500, 5000, 2000, 500,
-            help="**ELI5:** How long the car drives during the test. 2000 frames is 20 seconds.\n\n**Technical:** The total array size generated for the time-series simulation. Processed at 100Hz (10ms per frame)."
+            help="The total duration of the simulated test run. Processed at 100Hz, where 2000 frames equals 20 seconds of continuous driving data."
         )
         run_test = st.button("▶ Execute Automated Test Pipeline", type="primary")
         
@@ -136,8 +136,8 @@ with tab_validation:
         with st.expander("View Systems Engineering Coverage Requirements", expanded=True):
             st.info(
                 f"**System Level Pass/Fail Criteria:**\n\n"
-                f"1. **Radar Performance:** Target confidence must remain **>{SYS_REQS['radar_snow_min_conf']*100}%** in heavy snow. (RF waves should cut through precipitation).\n"
-                f"2. **LiDAR Performance:** Target confidence floor is **>{SYS_REQS['lidar_snow_min_conf']*100}%**. (Optical scattering is expected, but complete blindness is a failure).\n"
+                f"1. **Radar Performance:** Target confidence must remain **>{SYS_REQS['radar_snow_min_conf']*100}%** in heavy snow to ensure RF wave penetration.\n"
+                f"2. **LiDAR Performance:** Target confidence floor is **>{SYS_REQS['lidar_snow_min_conf']*100}%**. Optical scattering is expected, but complete loss of tracking is a failure.\n"
                 f"3. **Anomaly Tolerance:** Maximum of **{SYS_REQS['max_critical_failures']}** edge case failures permitted per validation run."
             )
 
@@ -161,7 +161,7 @@ with tab_validation:
             if len(radar_fails) > 0:
                 st.error(
                     f"⚠️ {len(radar_fails)} Radar Attenuation Events Detected.\n\n"
-                    "**Technical Root Cause:** The array below identifies the exact milliseconds where RF energy dropped below the 0.80 safety threshold, indicating potential water intrusion on the radome or a multi-path calculation error."
+                    "**Root Cause Analysis:** The array below identifies the exact timestamps where RF energy dropped below the safety threshold, indicating potential water intrusion on the radome or a multi-path calculation error."
                 )
                 st.dataframe(radar_fails.head(5), use_container_width=True)
             else:
@@ -191,14 +191,14 @@ with tab_reporting:
         c2.metric(
             "Radar Verification Drops", 
             r_fails,
-            help=f"Total frames where Radar confidence fell below {SYS_REQS['radar_snow_min_conf']}."
+            help=f"Total recorded frames where Radar confidence fell below the minimum safety threshold of {SYS_REQS['radar_snow_min_conf']}."
         )
         c3.markdown(f"### V&V Status: :{status_color}[{final_status}]")
         
         st.divider()
         st.subheader(
             "Sensor Attenuation Analysis (Time-Series)",
-            help="**How to read this chart:** The X-axis is time. The Y-axis is how confident the autonomous brain is that it sees a target. The dotted red line is the absolute minimum safety standard. Any dots that appear below the red line represent critical safety failures."
+            help="Plots multi-modal sensor confidence over the test duration. The red dashed line represents the absolute minimum safety standard for RF tracking. Coordinates falling below this threshold denote critical safety failures."
         )
         
         fig, ax = plt.subplots(figsize=(12, 4))
