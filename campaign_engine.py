@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 
 # --- CONFIGURATION & PAGE SETUP ---
-st.set_page_config(page_title="ODD Campaign Engine", layout="wide")
+st.set_page_config(page_title="ODD Campaign Engine", page_icon="⚙️", layout="wide")
 
 # --- SYSTEMS ENGINEERING REQUIREMENTS (V&V TARGETS) ---
 # Hardcoded system-level requirements for automated verification
@@ -76,19 +76,33 @@ with tab_logistics:
     st.markdown("Tracking seasonal windows and resource readiness for winter deployment.")
     
     c1, c2, c3 = st.columns(3)
-    c1.metric("Target ODD", "Heavy Snow / Sub-Zero")
-    c2.metric("Facility Availability", "Confirmed (Nov 15 - Dec 20)")
-    c3.metric("Hardware Shipped", "In Transit", delta="-2 Days (Delayed)", delta_color="inverse")
+    c1.metric(
+        "Target Operational Design Domain (ODD)", 
+        "Heavy Snow / Sub-Zero",
+        help="**ELI5:** The specific weather we need to test the car in to prove it is safe.\n\n**Technical:** The formally defined environmental constraints (Temperature < 0°C, Precipitation > 70%) under which the autonomous system is designed to operate safely."
+    )
+    c2.metric(
+        "Facility Availability", 
+        "Confirmed (Nov 15 - Dec 20)",
+        help="**ELI5:** The dates we rented the test track.\n\n**Technical:** Contractual window for exclusive access to the KRC winter proving grounds. Cost-burn rate mandates high-efficiency testing during this period."
+    )
+    c3.metric(
+        "Hardware Platform Readiness", 
+        "In Transit", 
+        delta="-2 Days (Delayed)", 
+        delta_color="inverse",
+        help="**ELI5:** The new sensors are on a truck, but they are late.\n\n**Technical:** Logistics tracker for Prototype v2.4 LiDAR/Radar suites. Supply chain friction requires proactive schedule compression to hit milestones."
+    )
     
-    st.subheader("14-Day Tactical Weather Window")
+    st.subheader("14-Day Tactical Weather Window", help="Forecast model to align engineering team deployment with optimal ODD conditions.")
     weather_df = fetch_weather_window()
     
     # Highlight days that meet the heavy snow requirement
     def highlight_snow(val):
         color = '#27ae60' if val == 'Heavy Snow' else ''
-        return f'background-color: {color}'
+        return f'background-color: {color}; color: white' if val == 'Heavy Snow' else ''
     
-    st.dataframe(weather_df.style.applymap(highlight_snow, subset=['ODD Condition']), use_container_width=True)
+    st.dataframe(weather_df.style.map(highlight_snow, subset=['ODD Condition']), use_container_width=True)
     
     # Go/No-Go Logic
     target_days = len(weather_df[weather_df["ODD Condition"] == "Heavy Snow"])
@@ -106,15 +120,26 @@ with tab_validation:
     
     col_input, col_reqs = st.columns([1, 1])
     with col_input:
-        platform = st.selectbox("Select Target Hardware/Software:", ["Production Release", "Hardware Prototype (v2.4)"])
-        test_frames = st.slider("Evaluation Window (Frames)", 500, 5000, 2000, 500)
+        platform = st.selectbox(
+            "Select Target Hardware/Software Platform:", 
+            ["Production Release", "Hardware Prototype (v2.4)"],
+            help="**ELI5:** Are we testing the software currently in customer cars, or the secret new hardware we just built?\n\n**Technical:** Selects the data generation seed and expected noise floor. 'Production' represents nominal baselines. 'Prototype' injects unverified hardware instability."
+        )
+        test_frames = st.slider(
+            "Evaluation Window (Total Frames)", 
+            500, 5000, 2000, 500,
+            help="**ELI5:** How long the car drives during the test. 2000 frames is 20 seconds.\n\n**Technical:** The total array size generated for the time-series simulation. Processed at 100Hz (10ms per frame)."
+        )
         run_test = st.button("▶ Execute Automated Test Pipeline", type="primary")
         
     with col_reqs:
-        st.info("**Systems Engineering Coverage Requirements**\n"
-                f"- Radar Snow Target: >{SYS_REQS['radar_snow_min_conf']*100}%\n"
-                f"- LiDAR Snow Target: >{SYS_REQS['lidar_snow_min_conf']*100}%\n"
-                f"- Strict Max Critical Failures: <{SYS_REQS['max_critical_failures']}")
+        with st.expander("View Systems Engineering Coverage Requirements", expanded=True):
+            st.info(
+                f"**System Level Pass/Fail Criteria:**\n\n"
+                f"1. **Radar Performance:** Target confidence must remain **>{SYS_REQS['radar_snow_min_conf']*100}%** in heavy snow. (RF waves should cut through precipitation).\n"
+                f"2. **LiDAR Performance:** Target confidence floor is **>{SYS_REQS['lidar_snow_min_conf']*100}%**. (Optical scattering is expected, but complete blindness is a failure).\n"
+                f"3. **Anomaly Tolerance:** Maximum of **{SYS_REQS['max_critical_failures']}** edge case failures permitted per validation run."
+            )
 
     if run_test:
         with st.spinner('Acquiring field data and compiling pipeline...'):
@@ -134,7 +159,10 @@ with tab_validation:
             # Debugging Output
             st.subheader("Actionable Debug Data (Root Cause Identification)")
             if len(radar_fails) > 0:
-                st.error(f"⚠️ {len(radar_fails)} Radar Attenuation Events Detected. Showing first 5 drops:")
+                st.error(
+                    f"⚠️ {len(radar_fails)} Radar Attenuation Events Detected.\n\n"
+                    "**Technical Root Cause:** The array below identifies the exact milliseconds where RF energy dropped below the 0.80 safety threshold, indicating potential water intrusion on the radome or a multi-path calculation error."
+                )
                 st.dataframe(radar_fails.head(5), use_container_width=True)
             else:
                 st.success("Zero Radar verification failures. Hardware is nominal.")
@@ -160,24 +188,31 @@ with tab_reporting:
             
         c1, c2, c3 = st.columns(3)
         c1.metric("Platform Tested", plat)
-        c2.metric("Radar Verification Drops", r_fails)
+        c2.metric(
+            "Radar Verification Drops", 
+            r_fails,
+            help=f"Total frames where Radar confidence fell below {SYS_REQS['radar_snow_min_conf']}."
+        )
         c3.markdown(f"### V&V Status: :{status_color}[{final_status}]")
         
         st.divider()
-        st.subheader("Sensor Attenuation Analysis")
+        st.subheader(
+            "Sensor Attenuation Analysis (Time-Series)",
+            help="**How to read this chart:** The X-axis is time. The Y-axis is how confident the autonomous brain is that it sees a target. The dotted red line is the absolute minimum safety standard. Any dots that appear below the red line represent critical safety failures."
+        )
         
         fig, ax = plt.subplots(figsize=(12, 4))
-        ax.plot(df["Timestamp (ms)"], df["Radar_Confidence"], color="#2c3e50", alpha=0.9, label="Radar (Main)")
-        ax.plot(df["Timestamp (ms)"], df["LiDAR_Confidence"], color="#3498db", alpha=0.4, label="LiDAR (Secondary)")
-        ax.axhline(y=SYS_REQS['radar_snow_min_conf'], color="#e74c3c", linestyle="--", label="Radar SysEng Requirement")
+        ax.plot(df["Timestamp (ms)"], df["Radar_Confidence"], color="#2c3e50", alpha=0.9, label="Radar (Main RF Sensor)")
+        ax.plot(df["Timestamp (ms)"], df["LiDAR_Confidence"], color="#3498db", alpha=0.4, label="LiDAR (Secondary Optical Sensor)")
+        ax.axhline(y=SYS_REQS['radar_snow_min_conf'], color="#e74c3c", linestyle="--", label="Radar Safety Threshold (0.80)")
         
         # Highlight anomalies natively in the plot
         if r_fails > 0:
             anomalies = df[df["Radar_Confidence"] < SYS_REQS['radar_snow_min_conf']]
-            ax.scatter(anomalies["Timestamp (ms)"], anomalies["Radar_Confidence"], color="red", zorder=5, label="Failure Root Cause")
+            ax.scatter(anomalies["Timestamp (ms)"], anomalies["Radar_Confidence"], color="red", zorder=5, label="Critical Failure Points")
             
         ax.set_title(f"Multi-Sensor Performance under Simulated Snow ({plat})")
         ax.set_xlabel("Test Duration (ms)")
-        ax.set_ylabel("Confidence Score")
+        ax.set_ylabel("Confidence Score (0.0 to 1.0)")
         ax.legend(loc="lower right")
         st.pyplot(fig)
