@@ -5,214 +5,226 @@ import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 
 # --- CONFIGURATION & PAGE SETUP ---
-st.set_page_config(page_title="ODD Campaign Engine", page_icon="⚙️", layout="wide")
+st.set_page_config(page_title="Advanced ODD Campaign Engine", page_icon="⚙️", layout="wide")
 
 # --- SYSTEMS ENGINEERING REQUIREMENTS (V&V TARGETS) ---
-# Hardcoded system-level requirements for automated verification
 SYS_REQS = {
-    "radar_snow_min_conf": 0.80,  # Radar must maintain 80% confidence in snow
-    "lidar_snow_min_conf": 0.30,  # LiDAR allowed to degrade, but floor is 30%
-    "max_allowable_latency_ms": 50,
-    "max_critical_failures": 5    # System fails validation if > 5 edge cases occur
+    "radar_min_conf": 0.80,    # RF must penetrate weather
+    "lidar_min_conf": 0.30,    # Optical scattering floor
+    "camera_min_conf": 0.40,   # Visual object classification floor
+    "min_traction_coeff": 0.60,# Minimum grip before hydroplaning/sliding occurs
+    "max_critical_failures": 5 # Strict pass/fail gate for regression testing
 }
 
-# --- DATA GENERATION (Simulating Field Test Operations) ---
+# --- DATA GENERATION ENGINE ---
 @st.cache_data
-def fetch_weather_window():
-    """Simulates a 14-day weather forecast at an external testing facility."""
-    np.random.seed(101)
+def fetch_advanced_weather():
+    """Generates a highly dynamic 14-day ODD logistics forecast."""
+    np.random.seed(105)
     dates = [datetime.now() + timedelta(days=i) for i in range(14)]
-    temps = np.random.normal(-5, 8, 14) # Cold weather target
-    precip = np.random.uniform(0, 100, 14) # Precipitation chance
+    temps = np.random.normal(5, 12, 14)
     
+    conditions = []
+    surfaces = []
+    visibility = []
+    
+    for t in temps:
+        chance = np.random.uniform(0, 100)
+        if t < 0 and chance > 70:
+            conditions.append("Heavy Snow")
+            surfaces.append("Ice/Slush")
+            visibility.append(np.random.uniform(100, 400))
+        elif t > 0 and chance > 85:
+            conditions.append("Hail / Torrential")
+            surfaces.append("Flooded")
+            visibility.append(np.random.uniform(50, 300))
+        elif t > 0 and chance > 50:
+            conditions.append("Rain")
+            surfaces.append("Wet/Slick")
+            visibility.append(np.random.uniform(800, 2000))
+        elif chance > 30 and t < 10:
+            conditions.append("Dense Fog")
+            surfaces.append("Damp")
+            visibility.append(np.random.uniform(10, 100))
+        else:
+            conditions.append("Clear")
+            surfaces.append("Dry")
+            visibility.append(10000)
+
     return pd.DataFrame({
         "Date": [d.strftime("%Y-%m-%d") for d in dates],
         "Temp (C)": temps.round(1),
-        "Precip Chance (%)": precip.round(1),
-        "ODD Condition": ["Heavy Snow" if p > 70 and t < 0 else "Clear/Cold" for p, t in zip(precip, temps)]
+        "Atmospheric State": conditions,
+        "Road Surface": surfaces,
+        "Visibility (m)": [int(v) for v in visibility]
     })
 
 @st.cache_data
-def run_automated_validation(hardware_type, duration_frames=2000):
-    """Simulates automated V&V data acquisition for Radar/LiDAR prototypes."""
-    np.random.seed(42 if hardware_type == "Production Release" else 99)
+def run_dynamic_validation(platform, frames, weather, surface, speed_mph):
+    """Correlates weather, surface conditions, and vehicle kinematics to sensor performance."""
+    np.random.seed(42 if platform == "Production Release" else 99)
+    time_ms = np.arange(frames) * 10
     
-    time_ms = np.arange(duration_frames) * 10
+    # 1. Base Sensor Degradation profiles
+    mod_radar, mod_lidar, mod_camera = 1.0, 1.0, 1.0
     
-    # Radar is generally robust, but the prototype has random attenuation drops
-    base_radar = 0.95
-    radar_noise = np.random.normal(0, 0.05, duration_frames)
-    if hardware_type == "Hardware Prototype (v2.4)":
-        radar_noise[np.random.choice(duration_frames, 20, replace=False)] -= 0.30 # Induce severe drops
+    if weather == "Heavy Snow":
+        mod_lidar, mod_camera = 0.4, 0.3
+    elif weather == "Hail / Torrential":
+        mod_radar, mod_lidar, mod_camera = 0.85, 0.3, 0.2
+    elif weather == "Dense Fog":
+        mod_lidar, mod_camera = 0.6, 0.1
+        
+    # 2. Road Surface & Kinematics (Traction Engine)
+    base_traction = 0.95
+    if surface == "Ice/Slush":
+        base_traction = 0.40
+    elif surface == "Flooded":
+        base_traction = 0.80 - (speed_mph / 100) # Hydroplaning formula
+    elif surface == "Wet/Slick":
+        base_traction = 0.75 - (speed_mph / 150)
+        
+    # Generate Time-Series Data
+    radar = np.clip((0.95 * mod_radar) + np.random.normal(0, 0.05, frames), 0.1, 1.0)
+    lidar = np.clip((0.90 * mod_lidar) + np.random.normal(0, 0.10, frames), 0.01, 1.0)
+    camera = np.clip((0.90 * mod_camera) + np.random.normal(0, 0.15, frames), 0.01, 1.0)
+    traction = np.clip(base_traction + np.random.normal(0, 0.08, frames), 0.1, 1.0)
     
-    # LiDAR degrades heavily in snow
-    base_lidar = 0.60
-    lidar_noise = np.random.normal(0, 0.15, duration_frames)
-    
-    df = pd.DataFrame({
-        "Timestamp (ms)": time_ms,
-        "Radar_Confidence": np.clip(base_radar + radar_noise, 0.1, 1.0),
-        "LiDAR_Confidence": np.clip(base_lidar + lidar_noise, 0.05, 1.0),
-        "Compute_Latency_ms": np.random.normal(30, 10, duration_frames)
+    # Inject Hardware Instability for Prototypes
+    if platform == "Hardware Prototype (v2.4)":
+        radar[np.random.choice(frames, int(frames*0.02), replace=False)] -= 0.30
+        
+    # Inject Splash-back occlusion events for camera on wet roads
+    if surface in ["Flooded", "Wet/Slick"] and speed_mph > 30:
+        splash_frames = np.random.choice(frames, int(frames*0.05), replace=False)
+        camera[splash_frames] = np.random.uniform(0.01, 0.15) # Lens heavily occluded
+
+    return pd.DataFrame({
+        "Timestamp_ms": time_ms,
+        "Radar_Conf": radar,
+        "LiDAR_Conf": lidar,
+        "Camera_Conf": camera,
+        "Traction_Coeff": traction,
+        "Vehicle_Speed": np.random.normal(speed_mph, 2, frames)
     })
-    return df
 
 # --- UI ARCHITECTURE ---
-st.title("Winter ODD Test Campaign & V&V Engine")
-st.markdown("Unified platform for external facility logistics and automated sensor verification.")
+st.title("Advanced ODD Campaign & Dynamics Engine")
+st.markdown("Unified platform correlating environmental logistics, multi-modal sensor V&V, and vehicle kinematics.")
 
-# Create main tabs for the application
 tab_logistics, tab_validation, tab_reporting = st.tabs([
-    "📍 Facility Logistics & TPM", 
-    "⚙️ Automated V&V Runner", 
-    "📊 Executive Technical Report"
+    "📍 Facility Logistics Matrix", 
+    "⚙️ Dynamic Simulation Runner", 
+    "📊 Executive Analytics"
 ])
 
 # ==========================================
-# TAB 1: LOGISTICS & CAMPAIGN MANAGEMENT
+# TAB 1: LOGISTICS
 # ==========================================
 with tab_logistics:
     st.header("External Test Facility: Keweenaw Research Center (KRC)")
-    st.markdown("Tracking seasonal windows and resource readiness for winter deployment.")
-    
     c1, c2, c3 = st.columns(3)
-    c1.metric(
-        "Target Operational Design Domain (ODD)", 
-        "Heavy Snow / Sub-Zero",
-        help="The specific environmental constraints (Temperature < 0°C, Precipitation > 70%) required to safely validate the autonomous system."
-    )
-    c2.metric(
-        "Facility Availability", 
-        "Confirmed (Nov 15 - Dec 20)",
-        help="The contracted window for exclusive access to the proving grounds. High-efficiency testing is required during these dates to manage cost burn rates."
-    )
-    c3.metric(
-        "Hardware Platform Readiness", 
-        "In Transit", 
-        delta="-2 Days (Delayed)", 
-        delta_color="inverse",
-        help="Logistics tracker for the physical sensor hardware. Current delays require proactive schedule compression to maintain project milestones."
-    )
+    c1.metric("Target ODD", "Multi-Condition Stress Testing")
+    c2.metric("Facility Availability", "Confirmed (Nov 15 - Dec 20)")
+    c3.metric("Hardware Platform Readiness", "In Transit", delta="-2 Days")
     
-    st.subheader("14-Day Tactical Weather Window", help="Forecast model used to align engineering team deployment with optimal target ODD conditions.")
-    weather_df = fetch_weather_window()
+    st.subheader("14-Day Tactical Environmental Forecast")
+    weather_df = fetch_advanced_weather()
     
-    # Highlight days that meet the heavy snow requirement
-    def highlight_snow(val):
-        color = '#27ae60' if val == 'Heavy Snow' else ''
-        return f'background-color: {color}; color: white' if val == 'Heavy Snow' else ''
+    def highlight_odd(val):
+        if val in ["Heavy Snow", "Hail / Torrential", "Ice/Slush", "Flooded"]:
+            return 'background-color: #c0392b; color: white'
+        elif val in ["Rain", "Dense Fog", "Wet/Slick"]:
+            return 'background-color: #f39c12; color: white'
+        return ''
     
-    st.dataframe(weather_df.style.map(highlight_snow, subset=['ODD Condition']), use_container_width=True)
-    
-    # Go/No-Go Logic
-    target_days = len(weather_df[weather_df["ODD Condition"] == "Heavy Snow"])
-    if target_days >= 3:
-        st.success(f"Logistics Clear: {target_days} prime ODD days identified. Teams are GREEN for deployment.")
-    else:
-        st.warning(f"Logistics Risk: Only {target_days} ODD days found. Consider extending facility contract.")
+    st.dataframe(weather_df.style.map(highlight_odd, subset=['Atmospheric State', 'Road Surface']), use_container_width=True)
+    st.caption("Red denotes severe high-value edge case testing days. Orange denotes moderate ODD degradation.")
 
 # ==========================================
-# TAB 2: AUTOMATED V&V RUNNER
+# TAB 2: V&V SIMULATION RUNNER
 # ==========================================
 with tab_validation:
-    st.header("Automated Sensor Verification Pipeline")
-    st.markdown("Execute automated regression tests against System Level Requirements.")
+    st.header("Dynamic Sensor & Kinematics Simulator")
     
-    col_input, col_reqs = st.columns([1, 1])
-    with col_input:
-        platform = st.selectbox(
-            "Select Target Hardware/Software Platform:", 
-            ["Production Release", "Hardware Prototype (v2.4)"],
-            help="Selects the system baseline. 'Production' uses stable nominal data, while 'Prototype' injects the expected instability of unverified hardware."
-        )
-        test_frames = st.slider(
-            "Evaluation Window (Total Frames)", 
-            500, 5000, 2000, 500,
-            help="The total duration of the simulated test run. Processed at 100Hz, where 2000 frames equals 20 seconds of continuous driving data."
-        )
-        run_test = st.button("▶ Execute Automated Test Pipeline", type="primary")
-        
-    with col_reqs:
-        with st.expander("View Systems Engineering Coverage Requirements", expanded=True):
-            st.info(
-                f"**System Level Pass/Fail Criteria:**\n\n"
-                f"1. **Radar Performance:** Target confidence must remain **>{SYS_REQS['radar_snow_min_conf']*100}%** in heavy snow to ensure RF wave penetration.\n"
-                f"2. **LiDAR Performance:** Target confidence floor is **>{SYS_REQS['lidar_snow_min_conf']*100}%**. Optical scattering is expected, but complete loss of tracking is a failure.\n"
-                f"3. **Anomaly Tolerance:** Maximum of **{SYS_REQS['max_critical_failures']}** edge case failures permitted per validation run."
-            )
+    c_env, c_veh, c_sys = st.columns(3)
+    with c_env:
+        st.subheader("Environmental Parameters")
+        sim_weather = st.selectbox("Atmospheric State", ["Clear", "Rain", "Dense Fog", "Heavy Snow", "Hail / Torrential"])
+        sim_surface = st.selectbox("Road Surface State", ["Dry", "Damp", "Wet/Slick", "Flooded", "Ice/Slush"])
+    with c_veh:
+        st.subheader("Vehicle Kinematics")
+        sim_speed = st.slider("Target Speed (mph)", 10, 85, 45, 5, help="Higher speeds exponentially increase risk of traction loss on compromised surfaces.")
+        test_frames = st.slider("Evaluation Window (Frames)", 500, 5000, 2000, 500)
+    with c_sys:
+        st.subheader("Systems Architecture")
+        platform = st.selectbox("Hardware Platform", ["Production Release", "Hardware Prototype (v2.4)"])
+        st.info("Execution engine will automatically correlate physics math between surface tension, velocity, and optical scattering.")
+        run_test = st.button("▶ Execute Dynamic V&V Pipeline", type="primary", use_container_width=True)
 
     if run_test:
-        with st.spinner('Acquiring field data and compiling pipeline...'):
-            test_data = run_automated_validation(platform, test_frames)
+        with st.spinner('Calculating multi-modal dynamics...'):
+            test_data = run_dynamic_validation(platform, test_frames, sim_weather, sim_surface, sim_speed)
             
-            # V&V Math Engine
-            radar_fails = test_data[test_data["Radar_Confidence"] < SYS_REQS['radar_snow_min_conf']]
-            lidar_fails = test_data[test_data["LiDAR_Confidence"] < SYS_REQS['lidar_snow_min_conf']]
+            # Diagnostic Counters
+            fails_r = len(test_data[test_data["Radar_Conf"] < SYS_REQS['radar_min_conf']])
+            fails_c = len(test_data[test_data["Camera_Conf"] < SYS_REQS['camera_min_conf']])
+            fails_t = len(test_data[test_data["Traction_Coeff"] < SYS_REQS['min_traction_coeff']])
             
-            # Save to session state for the reporting tab
-            st.session_state['test_data'] = test_data
-            st.session_state['platform'] = platform
-            st.session_state['radar_fails'] = len(radar_fails)
-            
-            st.success("Test Complete. Data cached for executive reporting.")
-            
-            # Debugging Output
-            st.subheader("Actionable Debug Data (Root Cause Identification)")
-            if len(radar_fails) > 0:
-                st.error(
-                    f"⚠️ {len(radar_fails)} Radar Attenuation Events Detected.\n\n"
-                    "**Root Cause Analysis:** The array below identifies the exact timestamps where RF energy dropped below the safety threshold, indicating potential water intrusion on the radome or a multi-path calculation error."
-                )
-                st.dataframe(radar_fails.head(5), use_container_width=True)
-            else:
-                st.success("Zero Radar verification failures. Hardware is nominal.")
+            st.session_state.update({
+                'td': test_data, 'plat': platform, 'env': f"{sim_weather} / {sim_surface}",
+                'fr': fails_r, 'fc': fails_c, 'ft': fails_t
+            })
+            st.success("Simulation Complete. Analytics cached to Executive Report.")
 
 # ==========================================
 # TAB 3: EXECUTIVE REPORTING
 # ==========================================
 with tab_reporting:
-    st.header("Technical Campaign Report")
+    st.header("Technical Qualification Report")
     
-    if 'test_data' not in st.session_state:
-        st.warning("No data found. Please execute a test in the V&V Runner tab first.")
+    if 'td' not in st.session_state:
+        st.warning("Awaiting data. Please execute a simulation in the Runner tab.")
     else:
-        df = st.session_state['test_data']
-        r_fails = st.session_state['radar_fails']
-        plat = st.session_state['platform']
+        df = st.session_state['td']
+        total_fails = st.session_state['fr'] + st.session_state['fc'] + st.session_state['ft']
         
-        # Calculate Pass/Fail status
-        if r_fails > SYS_REQS['max_critical_failures']:
-            final_status, status_color = "FAILED QUALIFICATION", "red"
+        if total_fails > SYS_REQS['max_critical_failures']:
+            status, color = "SYSTEM FAILED QUALIFICATION", "red"
         else:
-            final_status, status_color = "PASSED QUALIFICATION", "green"
+            status, color = "SYSTEM PASSED QUALIFICATION", "green"
             
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Platform Tested", plat)
-        c2.metric(
-            "Radar Verification Drops", 
-            r_fails,
-            help=f"Total recorded frames where Radar confidence fell below the minimum safety threshold of {SYS_REQS['radar_snow_min_conf']}."
-        )
-        c3.markdown(f"### V&V Status: :{status_color}[{final_status}]")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Platform Tested", st.session_state['plat'])
+        m2.metric("ODD Environment", st.session_state['env'])
+        m3.metric("Critical System Failures", total_fails)
+        m4.markdown(f"### Status: :{color}[{status}]")
         
         st.divider()
-        st.subheader(
-            "Sensor Attenuation Analysis (Time-Series)",
-            help="Plots multi-modal sensor confidence over the test duration. The red dashed line represents the absolute minimum safety standard for RF tracking. Coordinates falling below this threshold denote critical safety failures."
-        )
         
-        fig, ax = plt.subplots(figsize=(12, 4))
-        ax.plot(df["Timestamp (ms)"], df["Radar_Confidence"], color="#2c3e50", alpha=0.9, label="Radar (Main RF Sensor)")
-        ax.plot(df["Timestamp (ms)"], df["LiDAR_Confidence"], color="#3498db", alpha=0.4, label="LiDAR (Secondary Optical Sensor)")
-        ax.axhline(y=SYS_REQS['radar_snow_min_conf'], color="#e74c3c", linestyle="--", label="Radar Safety Threshold (0.80)")
+        # CHART 1: SENSORS
+        st.subheader("Tri-Sensor Attenuation Analysis", help="Evaluates RF and Optical penetration against atmospheric conditions.")
+        fig_s, ax_s = plt.subplots(figsize=(12, 3.5))
+        ax_s.plot(df["Timestamp_ms"], df["Radar_Conf"], color="#2c3e50", alpha=0.9, label="Radar (RF)")
+        ax_s.plot(df["Timestamp_ms"], df["Camera_Conf"], color="#8e44ad", alpha=0.6, label="Camera (Optical)")
+        ax_s.plot(df["Timestamp_ms"], df["LiDAR_Conf"], color="#3498db", alpha=0.4, label="LiDAR (Laser)")
+        ax_s.axhline(y=SYS_REQS['radar_min_conf'], color="#e74c3c", linestyle="--", label="Radar Safety Floor")
+        ax_s.set_ylabel("Confidence Matrix (0-1)")
+        ax_s.legend(loc="lower right")
+        st.pyplot(fig_s)
         
-        # Highlight anomalies natively in the plot
-        if r_fails > 0:
-            anomalies = df[df["Radar_Confidence"] < SYS_REQS['radar_snow_min_conf']]
-            ax.scatter(anomalies["Timestamp (ms)"], anomalies["Radar_Confidence"], color="red", zorder=5, label="Critical Failure Points")
+        # CHART 2: KINEMATICS
+        st.subheader("Vehicle Dynamics & Traction Profile", help="Evaluates physical chassis stability based on velocity and road surface friction.")
+        fig_t, ax_t = plt.subplots(figsize=(12, 3.5))
+        ax_t.plot(df["Timestamp_ms"], df["Traction_Coeff"], color="#27ae60", label="Traction Coefficient")
+        ax_t.axhline(y=SYS_REQS['min_traction_coeff'], color="#e74c3c", linestyle="--", label="Hydroplane / Slip Threshold")
+        
+        # Highlight slip events
+        if st.session_state['ft'] > 0:
+            slips = df[df["Traction_Coeff"] < SYS_REQS['min_traction_coeff']]
+            ax_t.scatter(slips["Timestamp_ms"], slips["Traction_Coeff"], color="red", zorder=5, label="Loss of Control Event")
             
-        ax.set_title(f"Multi-Sensor Performance under Simulated Snow ({plat})")
-        ax.set_xlabel("Test Duration (ms)")
-        ax.set_ylabel("Confidence Score (0.0 to 1.0)")
-        ax.legend(loc="lower right")
-        st.pyplot(fig)
+        ax_t.set_xlabel("Test Duration (ms)")
+        ax_t.set_ylabel("Grip Coefficient")
+        ax_t.legend(loc="lower right")
+        st.pyplot(fig_t)
