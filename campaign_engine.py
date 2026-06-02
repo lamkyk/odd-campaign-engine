@@ -19,10 +19,10 @@ SYS_REQS = {
 # --- DATA GENERATION ENGINE ---
 @st.cache_data
 def fetch_advanced_weather():
-    """Generates a highly dynamic 14-day ODD logistics forecast."""
+    """Generates a highly dynamic 30-day ODD logistics forecast."""
     np.random.seed(105)
-    dates = [datetime.now() + timedelta(days=i) for i in range(14)]
-    temps = np.random.normal(5, 12, 14)
+    dates = [datetime.now() + timedelta(days=i) for i in range(30)]
+    temps = np.random.normal(5, 12, 30)
     
     conditions = []
     surfaces = []
@@ -80,7 +80,7 @@ def run_dynamic_validation(platform, frames, weather, surface, speed_mph):
     if surface == "Ice/Slush":
         base_traction = 0.40
     elif surface == "Flooded":
-        base_traction = 0.80 - (speed_mph / 100) # Hydroplaning formula
+        base_traction = 0.80 - (speed_mph / 100)
     elif surface == "Wet/Slick":
         base_traction = 0.75 - (speed_mph / 150)
         
@@ -97,7 +97,7 @@ def run_dynamic_validation(platform, frames, weather, surface, speed_mph):
     # Inject Splash-back occlusion events for camera on wet roads
     if surface in ["Flooded", "Wet/Slick"] and speed_mph > 30:
         splash_frames = np.random.choice(frames, int(frames*0.05), replace=False)
-        camera[splash_frames] = np.random.uniform(0.01, 0.15) # Lens heavily occluded
+        camera[splash_frames] = np.random.uniform(0.01, 0.15)
 
     return pd.DataFrame({
         "Timestamp_ms": time_ms,
@@ -124,22 +124,40 @@ tab_logistics, tab_validation, tab_reporting = st.tabs([
 with tab_logistics:
     st.header("External Test Facility: Keweenaw Research Center (KRC)")
     c1, c2, c3 = st.columns(3)
-    c1.metric("Target ODD", "Multi-Condition Stress Testing")
-    c2.metric("Facility Availability", "Confirmed (Nov 15 - Dec 20)")
-    c3.metric("Hardware Platform Readiness", "In Transit", delta="-2 Days")
+    c1.metric(
+        "Target ODD", 
+        "Multi-Condition Stress", 
+        help="The defined operational boundaries requiring validation, specifically extreme weather and degraded surface friction."
+    )
+    c2.metric(
+        "Facility Availability", 
+        "Confirmed (30-Day Window)", 
+        help="Contractual operational window for proving ground access. High utilization required to minimize cost-burn."
+    )
+    c3.metric(
+        "Hardware Platform Readiness", 
+        "In Transit", 
+        delta="-2 Days", 
+        help="Logistical status of physical sensor suites. Delays require schedule compression."
+    )
     
-    st.subheader("14-Day Tactical Environmental Forecast")
+    st.divider()
+    st.subheader("30-Day Tactical Environmental Forecast", help="Long-range meteorological projection for deployment scheduling.")
     weather_df = fetch_advanced_weather()
     
+    # Visual Calendar / Temperature Plot
+    st.bar_chart(weather_df.set_index("Date")["Temp (C)"], height=200)
+    
+    # High Contrast Styling Logic
     def highlight_odd(val):
         if val in ["Heavy Snow", "Hail / Torrential", "Ice/Slush", "Flooded"]:
-            return 'background-color: #c0392b; color: white'
+            return 'background-color: #8b0000; color: #ffffff;' # Dark Red
         elif val in ["Rain", "Dense Fog", "Wet/Slick"]:
-            return 'background-color: #f39c12; color: white'
+            return 'background-color: #b8860b; color: #ffffff;' # Dark Goldenrod
         return ''
     
     st.dataframe(weather_df.style.map(highlight_odd, subset=['Atmospheric State', 'Road Surface']), use_container_width=True)
-    st.caption("Red denotes severe high-value edge case testing days. Orange denotes moderate ODD degradation.")
+    st.caption("Red formatting denotes severe edge case testing parameters. Orange denotes moderate degradation. Thermal chart displays daily mean temperature.")
 
 # ==========================================
 # TAB 2: V&V SIMULATION RUNNER
@@ -150,16 +168,36 @@ with tab_validation:
     c_env, c_veh, c_sys = st.columns(3)
     with c_env:
         st.subheader("Environmental Parameters")
-        sim_weather = st.selectbox("Atmospheric State", ["Clear", "Rain", "Dense Fog", "Heavy Snow", "Hail / Torrential"])
-        sim_surface = st.selectbox("Road Surface State", ["Dry", "Damp", "Wet/Slick", "Flooded", "Ice/Slush"])
+        sim_weather = st.selectbox(
+            "Atmospheric State", 
+            ["Clear", "Rain", "Dense Fog", "Heavy Snow", "Hail / Torrential"],
+            help="Modulates optical scattering (LiDAR) and multi-path RF attenuation (Radar)."
+        )
+        sim_surface = st.selectbox(
+            "Road Surface State", 
+            ["Dry", "Damp", "Wet/Slick", "Flooded", "Ice/Slush"],
+            help="Modulates the baseline friction coefficient for the chassis traction model."
+        )
     with c_veh:
         st.subheader("Vehicle Kinematics")
-        sim_speed = st.slider("Target Speed (mph)", 10, 85, 45, 5, help="Higher speeds exponentially increase risk of traction loss on compromised surfaces.")
-        test_frames = st.slider("Evaluation Window (Frames)", 500, 5000, 2000, 500)
+        sim_speed = st.slider(
+            "Target Speed (mph)", 
+            10, 85, 45, 5, 
+            help="Longitudinal velocity. Higher speeds degrade the traction coefficient exponentially on compromised surfaces."
+        )
+        test_frames = st.slider(
+            "Evaluation Window (Frames)", 
+            500, 5000, 2000, 500,
+            help="Total time-series array size. Processed at 100Hz (2000 frames = 20 seconds)."
+        )
     with c_sys:
         st.subheader("Systems Architecture")
-        platform = st.selectbox("Hardware Platform", ["Production Release", "Hardware Prototype (v2.4)"])
-        st.info("Execution engine will automatically correlate physics math between surface tension, velocity, and optical scattering.")
+        platform = st.selectbox(
+            "Hardware Platform", 
+            ["Production Release", "Hardware Prototype (v2.4)"],
+            help="'Production' utilizes stable nominal baselines. 'Prototype' injects unverified hardware instability and stochastic dropouts."
+        )
+        st.info("Execution engine correlates physical mathematics between surface tension, velocity, and optical scattering.")
         run_test = st.button("▶ Execute Dynamic V&V Pipeline", type="primary", use_container_width=True)
 
     if run_test:
@@ -195,26 +233,26 @@ with tab_reporting:
             status, color = "SYSTEM PASSED QUALIFICATION", "green"
             
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Platform Tested", st.session_state['plat'])
-        m2.metric("ODD Environment", st.session_state['env'])
-        m3.metric("Critical System Failures", total_fails)
+        m1.metric("Platform Tested", st.session_state['plat'], help="The targeted hardware/software build under evaluation.")
+        m2.metric("ODD Environment", st.session_state['env'], help="The simulated atmospheric and surface conditions.")
+        m3.metric("Critical System Failures", total_fails, help="Aggregate count of instances where any sensor or traction metric fell below safety thresholds.")
         m4.markdown(f"### Status: :{color}[{status}]")
         
         st.divider()
         
         # CHART 1: SENSORS
-        st.subheader("Tri-Sensor Attenuation Analysis", help="Evaluates RF and Optical penetration against atmospheric conditions.")
+        st.subheader("Tri-Sensor Attenuation Analysis", help="Evaluates RF and Optical penetration against atmospheric conditions. Dotted line represents the minimum safety threshold for primary RF tracking.")
         fig_s, ax_s = plt.subplots(figsize=(12, 3.5))
         ax_s.plot(df["Timestamp_ms"], df["Radar_Conf"], color="#2c3e50", alpha=0.9, label="Radar (RF)")
         ax_s.plot(df["Timestamp_ms"], df["Camera_Conf"], color="#8e44ad", alpha=0.6, label="Camera (Optical)")
         ax_s.plot(df["Timestamp_ms"], df["LiDAR_Conf"], color="#3498db", alpha=0.4, label="LiDAR (Laser)")
         ax_s.axhline(y=SYS_REQS['radar_min_conf'], color="#e74c3c", linestyle="--", label="Radar Safety Floor")
-        ax_s.set_ylabel("Confidence Matrix (0-1)")
+        ax_s.set_ylabel("Confidence Matrix (0.0-1.0)")
         ax_s.legend(loc="lower right")
         st.pyplot(fig_s)
         
         # CHART 2: KINEMATICS
-        st.subheader("Vehicle Dynamics & Traction Profile", help="Evaluates physical chassis stability based on velocity and road surface friction.")
+        st.subheader("Vehicle Dynamics & Traction Profile", help="Evaluates physical chassis stability based on velocity and road surface friction. Dotted line represents the hydroplane or slip-angle threshold.")
         fig_t, ax_t = plt.subplots(figsize=(12, 3.5))
         ax_t.plot(df["Timestamp_ms"], df["Traction_Coeff"], color="#27ae60", label="Traction Coefficient")
         ax_t.axhline(y=SYS_REQS['min_traction_coeff'], color="#e74c3c", linestyle="--", label="Hydroplane / Slip Threshold")
